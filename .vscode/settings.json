@@ -1,0 +1,11 @@
+{
+	"files.associations": {
+		"*.sqlbook": "sql",
+		"*.ndjson": "jsonl",
+		"*.dbclient-js": "javascript",
+		"*.sh": "shellscript",
+		"string.h": "c",
+		"mm.h": "c",
+		"__locale": "c"
+	}
+}
