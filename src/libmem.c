@@ -87,6 +87,12 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
 
   /* TODO get_free_vmrg_area FAILED handle the region management (Fig.6)*/
 
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  int inc_sz = PAGING_PAGE_ALIGNSZ(size);
+  if (inc_vma_limit(caller, vmaid, inc_sz) < 0) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
   /* TODO retrive current vma if needed, current comment out due to compiler redundant warning*/
   /*Attempt to increate limit to get space */
   //struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);

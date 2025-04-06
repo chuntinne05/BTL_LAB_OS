@@ -6,6 +6,8 @@
 		"*.sh": "shellscript",
 		"string.h": "c",
 		"mm.h": "c",
-		"__locale": "c"
+		"__locale": "c",
+		"syscall.h": "c",
+		"libmem.h": "c"
 	}
 }
