@@ -133,20 +133,4 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz)
 
   return 0;
 }
-
-// dung de debug
-int print_list_pgn(struct pgn_t *ip)
-{
-  printf("print_list_pgn: ");
-  if (ip == NULL) { printf("NULL list\n"); return -1; }
-  printf("\n");
-  while (ip != NULL)
-  {
-    printf("pgn[%d]-\n", ip->pgn);
-    ip = ip->pg_next;
-  }
-  printf("\n");
-  return 0;
-}
-
 // #endif
