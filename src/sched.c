@@ -87,6 +87,7 @@ void put_proc(struct pcb_t * proc) {
 
 	/* TODO: put running proc to running_list */
 	pthread_mutex_lock(&queue_lock);
+	// enqueue(&run_queue, proc);
 	enqueue(&run_queue, proc);
 	pthread_mutex_unlock(&queue_lock);
 

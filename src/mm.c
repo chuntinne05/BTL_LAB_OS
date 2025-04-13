@@ -7,7 +7,10 @@
 #include "mm.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
 
+static pthread_mutex_t ram_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t swap_lock = PTHREAD_MUTEX_INITIALIZER;
 /*
  * init_pte - Initialize PTE entry
  */
@@ -89,34 +92,75 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-  int pgit = 0;
-  int pgn = PAGING_PGN(addr);
+  // struct framephy_struct *fpit
+  // int pgit;
+  // int pgn = PAGING_PGN(addr);
 
-  ret_rg->rg_start = addr;
-  ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ;
-  ret_rg->rg_next = NULL;
-  // ret_rg->vmaid = caller->mm->mmap->vm_id;
+  // ret_rg->rg_start = addr;
+  // ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ;
+  // ret_rg->rg_next = NULL;
+  // // ret_rg->vmaid = caller->mm->mmap->vm_id;
 
-  for (pgit = 0; pgit < pgnum; pgit++) {
-    int cur_addr = addr +  pgit * PAGING_PAGESZ;
-    int pgn = PAGING_PGN(cur_addr);
+  // for (pgit = 0; pgit < pgnum; pgit++) {
+  //   int cur_addr = addr +  pgit * PAGING_PAGESZ;
+  //   int pgn = PAGING_PGN(cur_addr);
 
-    // nếu không có khung trống trong frames , lấy fpn của nó
-    if (frames !=  NULL)
-    {
-      pte_set_fpn(&caller->mm->pgd[pgn], frames->fpn);
-      frames = frames->fp_next;
+  //   // nếu không có khung trống trong frames , lấy fpn của nó
+  //   if (frames !=  NULL)
+  //   {
+  //     pte_set_fpn(&caller->mm->pgd[pgn], frames->fpn);
+  //     frames = frames->fp_next;
+  //   }
+  //   else
+  //   {
+  //     printf("lỗi không đủ frames để ánh xạ tại địa chỉ %d \n", cur_addr);
+  //     return -1;
+  //   }
+
+  //   // thêm stt trang vào fifo
+  //   enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
+  // }
+  // return 0;
+
+  struct framephy_struct *cur_frame = frames; // Con trỏ đến frame hiện tại
+  int pgn_start = PAGING_PGN(addr);          // Trang ảo bắt đầu
+  int pgn_end = pgn_start + pgnum;           // Trang ảo kết thúc
+
+    // //Cập nhật thông tin vùng ánh xạ trả về
+    // ret_rg->rg_start = addr;                    // Địa chỉ ảo bắt đầu
+    // ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ; // Địa chỉ ảo kết thúc
+    // ret_rg->vmaid = caller->mm->mmap->vm_id;   // Gắn vùng địa chỉ ảo hiện tại
+
+    // Ánh xạ từng trang ảo vào frame vật lý
+  for (int pgit = 0; pgit < pgnum; pgit++) {
+    int pgn = pgn_start + pgit;            // Trang hiện tại
+    uint32_t *pte = &caller->mm->pgd[pgn]; // PTE của trang
+
+    // Kiểm tra xem frame có đủ để ánh xạ không
+    if (cur_frame == NULL) {
+        //printf("[VMAP_PAGE_RANGE] Error: Not enough frames for page %d.\n", pgn);
+        return -1; // Trả lỗi nếu không đủ frame
     }
-    else
-    {
-      printf("lỗi không đủ frames để ánh xạ tại địa chỉ %d \n", cur_addr);
-      return -1;
+
+    // Kiểm tra trang đã được ánh xạ trước đó chưa
+    if (PAGING_PAGE_PRESENT(*pte)) {
+        //printf("[VMAP_PAGE_RANGE] Warning: Page %d is already mapped to frame %d.\n", 
+                //pgn, PAGING_PTE_FPN(*pte));
+        continue; // Bỏ qua nếu trang đã được ánh xạ
     }
 
-    // thêm stt trang vào fifo
+    // Ánh xạ frame vào PTE
+    pte_set_fpn(pte, cur_frame->fpn); // Cập nhật bảng trang
+    //printf("[VMAP_PAGE_RANGE] Page %d mapped to frame %d.\n", pgn, cur_frame->fpn);
+
+    // Thêm trang vào danh sách FIFO để theo dõi
     enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
+
+    // Chuyển sang frame tiếp theo
+    cur_frame = cur_frame->fp_next;
   }
-  return 0;
+
+    return 0; // Trả về thành công
 }
 
 /*
@@ -130,29 +174,73 @@ int vmap_page_range(struct pcb_t *caller,           // process call
 
 int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
 {
-  int pgit, fpn;
-  *frm_lst = NULL;
+  // int pgit, fpn;
+  // *frm_lst = NULL;
 
-  for (pgit = 0; pgit < req_pgnum; pgit++)
-  {
-    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-    {
-      struct framephy_struct *new_node = malloc(sizeof(struct framephy_struct));
-      if (new_node == NULL)
-      {
-        printf("lỗi allocate memory trong alloc_pages_range\n");
+  // for (pgit = 0; pgit < req_pgnum; pgit++)
+  // {
+  //   // if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
+  //   // {
+  //   //   struct framephy_struct *new_node = malloc(sizeof(struct framephy_struct));
+  //   //   if (new_node == NULL)
+  //   //   {
+  //   //     printf("lỗi allocate memory trong alloc_pages_range\n");
+  //   //     return -1;
+  //   //   }
+  //   //   new_node->fpn = fpn;
+  //   //   new_node->fp_next = *frm_lst;
+  //   //   *frm_lst = new_node;
+  //   // }
+  //   // else
+  //   // { 
+  //   //   // không đủ khung trống (OUT OF MEMORY - OOM)
+  //   //   printf("lỗi không đủ khung trống trong RAM\n");
+  //   //   return -3000;
+  //   // }
+  // }
+
+  // return 0;
+
+  for (int pgit = 0; pgit < req_pgnum; pgit++) {
+    uint32_t *pte = &caller->mm->pgd[pgit];
+
+    // Kiểm tra nếu trang đã được ánh xạ
+    if (PAGING_PAGE_PRESENT(*pte)) {
+        //printf("[ALLOC_PAGES_RANGE] Page %d already mapped to frame %d.\n", pgit, PAGING_PTE_FPN(*pte));
+        continue;
+    }
+
+    int fpn;
+    // Lấy khung trống từ RAM
+    pthread_mutex_lock(&ram_lock);
+    if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
+        pthread_mutex_unlock(&ram_lock);
+
+        //printf("[ALLOC_PAGES_RANGE] Error: Out of free frames.\n");
         return -1;
-      }
-      new_node->fpn = fpn;
-      new_node->fp_next = *frm_lst;
-      *frm_lst = new_node;
     }
-    else
-    { 
-      // không đủ khung trống (OUT OF MEMORY - OOM)
-      printf("lỗi không đủ khung trống trong RAM\n");
-      return -3000;
+    pthread_mutex_unlock(&ram_lock);
+
+    // Cập nhật danh sách khung trang
+    struct framephy_struct *node = malloc(sizeof(struct framephy_struct));
+    if (node == NULL) {
+        printf("[ALLOC_PAGES_RANGE] Error: Failed to allocate memory for framephy_struct.\n");
+        return -1;
     }
+    node->fpn = fpn;
+    node->fp_next = *frm_lst;
+    *frm_lst = node;
+
+    // Cập nhật PTE
+    pte_set_fpn(pte, fpn);
+    if (!PAGING_PAGE_PRESENT(*pte)) {
+        printf("[ALLOC_PAGES_RANGE] Error: Failed to set frame number in PTE for page %d.\n", pgit);
+        // Thêm trang vào danh sách FIFO
+          //enlist_pgn_node(&caller->mm->fifo_pgn, pgit);
+        return -1;
+    }
+    enlist_pgn_node(&caller->mm->fifo_pgn, pgit);
+    //printf("[ALLOC_PAGES_RANGE] Page %d mapped to frame %d.\n", pgit, fpn);
   }
 
   return 0;
@@ -193,9 +281,7 @@ int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int inc
     return -1;
   }
 
-  if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
-    return -1;
-  }
+  vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg);
 
   return 0;
 }

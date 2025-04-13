@@ -17,20 +17,38 @@
  */
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid)
 {
+  // struct vm_area_struct *pvma = mm->mmap;
+
+  // if (mm->mmap == NULL)
+  //   return NULL;
+
+  // int vmait = pvma->vm_id;
+
+  // while (vmait < vmaid)
+  // {
+  //   if (pvma == NULL)
+  //     return NULL;
+
+  //   pvma = pvma->vm_next;
+  //   vmait = pvma->vm_id;
+  // }
+
+  // return pvma;
+
   struct vm_area_struct *pvma = mm->mmap;
 
   if (mm->mmap == NULL)
-    return NULL;
+      return NULL;
 
-  int vmait = pvma->vm_id;
+  int vmait = 0;
 
   while (vmait < vmaid)
   {
-    if (pvma == NULL)
-      return NULL;
+      if (pvma == NULL)
+          return NULL;
 
-    pvma = pvma->vm_next;
-    vmait = pvma->vm_id;
+      vmait++;
+      pvma = pvma->vm_next;
   }
 
   return pvma;
@@ -52,16 +70,31 @@ int __mm_swap_page(struct pcb_t *caller, int vicfpn , int swpfpn)
  */
 struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, int size, int alignedsz)
 {
-  struct vm_rg_struct * newrg;
+  // struct vm_rg_struct * newrg;
+  // struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+
+  // newrg = malloc(sizeof(struct vm_rg_struct));
+
+  // newrg->rg_start = cur_vma->sbrk; 
+  // newrg->rg_end = newrg->rg_start + alignedsz;
+  // newrg->rg_next = NULL;
+
+  // cur_vma->sbrk = newrg->rg_end;
+
+  // return newrg;
+
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  if (!cur_vma) return NULL;
 
-  newrg = malloc(sizeof(struct vm_rg_struct));
+  // Kiểm tra vượt giới hạn `vm_end`
+  if (cur_vma->sbrk + alignedsz > cur_vma->vm_end) return NULL;
 
-  newrg->rg_start = cur_vma->sbrk; 
-  newrg->rg_end = newrg->rg_start + alignedsz;
-  newrg->rg_next = NULL;
+  struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
+  if (!newrg) return NULL;
 
-  cur_vma->sbrk = newrg->rg_end;
+  newrg->rg_start = cur_vma->sbrk;
+  newrg->rg_end = cur_vma->sbrk + alignedsz;
+  cur_vma->sbrk += alignedsz;
 
   return newrg;
 }
@@ -75,26 +108,51 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, in
  */
 int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, int vmastart, int vmaend)
 {
-  struct vm_area_struct *pvma = caller->mm->mmap;
-  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  // struct vm_area_struct *pvma = caller->mm->mmap;
+  // struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
 
-  while (pvma != NULL)
-  {
-    if(pvma != cur_vma) {
-      if (vmastart < pvma->vm_end && vmaend > pvma-> vm_start)
-      {
-        return -1;
-      }
-    }
-    pvma = pvma->vm_next;
-  }
+  // while (pvma != NULL)
+  // {
+  //   if(pvma != cur_vma) {
+  //     if (vmastart < pvma->vm_end && vmaend > pvma-> vm_start)
+  //     {
+  //       return -1;
+  //     }
+  //   }
+  //   pvma = pvma->vm_next;
+  // }
 
-  if (vmastart != cur_vma->sbrk)
-  {
-    printf("Lỗi new vm region start (%d) không khớp với sbrk hiện tại (%d)\n.", vmastart, cur_vma->sbrk );
-    return -1;
-  }
+  // if (vmastart != cur_vma->sbrk)
+  // {
+  //   printf("Lỗi new vm region start (%d) không khớp với sbrk hiện tại (%d)\n.", vmastart, cur_vma->sbrk );
+  //   return -1;
+  // }
   
+  // return 0;
+
+  struct vm_area_struct *cur = caller->mm->mmap;
+  if(vmaend < 0 ){
+      printf("[VALIDATE_OVERLAP] Error: NOT ENOUGH MEMORY,%d %d\n");
+      return -1;
+  }
+  #ifdef MM_PAGING_HEAP_GODOWN
+  if(vmaend > caller->vmemsz) {
+      printf("[VALIDATE_OVERLAP] Error: NOT ENOUGH MEMORY,%d %d\n", caller->vmemsz, vmaend);
+      return -1;
+  }
+  #endif
+
+  while (cur) {
+      if (cur->vm_id != vmaid && 
+          ((vmastart >= cur->vm_start && vmastart < cur->vm_end) ||
+           (vmaend > cur->vm_start && vmaend <= cur->vm_end))) {
+          printf("[VALIDATE_OVERLAP] Error: Overlap detected with VMA %d\n", cur->vm_id);
+          return -1;
+      }
+      cur = cur->vm_next;
+  }
+
+  //printf("[VALIDATE_OVERLAP] No overlap detected for VMA %d\n", vmaid);
   return 0;
 }
 

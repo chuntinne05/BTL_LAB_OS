@@ -8,6 +8,9 @@
 		"mm.h": "c",
 		"__locale": "c",
 		"syscall.h": "c",
-		"libmem.h": "c"
+		"libmem.h": "c",
+		"common.h": "c",
+		"pthread.h": "c",
+		"stdio.h": "c"
 	}
 }

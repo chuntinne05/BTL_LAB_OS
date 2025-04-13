@@ -8,6 +8,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+
+static pthread_mutex_t ram_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t swap_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  *  MEMPHY_mv_csr - move MEMPHY cursor
@@ -156,40 +160,75 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, int *retfpn)
    free(fp);
 
    return 0;
+   // if (mp == NULL || retfpn == NULL) {
+   //      printf("[MEMPHY_GET_FREEFP] Error: Invalid memory structure or output pointer.\n");
+   //      return -1;
+   //  }
+   // pthread_mutex_lock(&ram_lock); // Đảm bảo đồng bộ hóa
+
+   // struct framephy_struct *fp = mp->free_fp_list;
+
+   // if (fp == NULL){
+   //     printf("[MEMPHY_GET_FREEFP] Error: No free frame available.\n");
+   //     pthread_mutex_unlock(&ram_lock);
+   //   return -1;
+   // }
+   // *retfpn = fp->fpn;
+   // mp->free_fp_list = fp->fp_next;
+
+   // /* MEMPHY is iteratively used up until its exhausted
+   //  * No garbage collector acting then it not been released
+   //  */
+   // free(fp);
+   // pthread_mutex_unlock(&ram_lock);
+   // return 0;
 }
 
 int MEMPHY_dump(struct memphy_struct *mp)
 {
-   if (mp == NULL || mp->storage == NULL)
-   {
-      printf("Error : invalid memo structure.\n");
-      return -1;
-   }
-   printf("MEMPHY dump (max size %d bytes):\n", mp->maxsz);
-   for (int i = 0; i < mp->maxsz; i++) {
-       printf("%02x ", mp->storage[i]);
-       if ((i + 1) % 16 == 0)
-           printf("\n");
-   }
+   // if (mp == NULL || mp->storage == NULL)
+   // {
+   //    printf("Error : invalid memo structure.\n");
+   //    return -1;
+   // }
+   // printf("MEMPHY dump (max size %d bytes):\n", mp->maxsz);
+   // for (int i = 0; i < mp->maxsz; i++) {
+   //     printf("%02x ", mp->storage[i]);
+   //     if ((i + 1) % 16 == 0)
+   //         printf("\n");
+   // }
 
+   // return 0;
+
+   if(mp == NULL || mp->storage == NULL) {
+      printf("Error: Invalid memory or storage pointer\n");
+      return -1; // check if memory valid?
+   }
+   printf("__RAM CONTENT__\n");
+
+   unsigned long address = 0; // use unsigned long to avoid errors when traversing memory address
+
+   // scan memory from 0 to mp-maxsz - 1
+   for(address = 0; address < mp->maxsz; address++) {
+      // check if value at address not equal 0
+      if(mp->storage[address] != 0) {
+         printf("0x%08lx: %08x\n", address, mp->storage[address]);
+      }
+   }
+   printf("__END CONTENT__\n");
+
+   printf("\n");
    return 0;
 }
 
 int MEMPHY_put_freefp(struct memphy_struct *mp, int fpn)
 {
-   if (mp == NULL)
-   {
-      return -1;
-   }
-
+   struct framephy_struct *fp = mp->free_fp_list;
    struct framephy_struct *newnode = malloc(sizeof(struct framephy_struct));
-   if (newnode == NULL)
-   {
-      return -1;
-   }
 
+   /* Create new node with value fpn */
    newnode->fpn = fpn;
-   newnode->fp_next = mp->free_fp_list;
+   newnode->fp_next = fp;
    mp->free_fp_list = newnode;
 
    return 0;
@@ -200,22 +239,11 @@ int MEMPHY_put_freefp(struct memphy_struct *mp, int fpn)
  */
 int init_memphy(struct memphy_struct *mp, int max_size, int randomflg)
 {
-   if (mp == NULL || max_size <= 0) {
-      return -1; 
-   }
-
    mp->storage = (BYTE *)malloc(max_size * sizeof(BYTE));
-   if (mp->storage == NULL) {
-      return -1; 
-   }
-
    mp->maxsz = max_size;
    memset(mp->storage, 0, max_size * sizeof(BYTE));
 
-   if (MEMPHY_format(mp, PAGING_PAGESZ) < 0) {
-      printf("Error: MEMPHY_format failed in init_memphy\n");
-      return -1;
-  }
+   MEMPHY_format(mp, PAGING_PAGESZ);
 
    mp->rdmflg = (randomflg != 0) ? 1 : 0;
 
