@@ -7,10 +7,9 @@
 #include "mm.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include <pthread.h>
 
-static pthread_mutex_t ram_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t swap_lock = PTHREAD_MUTEX_INITIALIZER;
+// TODO: struct pgn_t* global_fifo = NULL;
+
 /*
  * init_pte - Initialize PTE entry
  */
@@ -22,10 +21,12 @@ int init_pte(uint32_t *pte,
              int swptyp, // swap type
              int swpoff) // swap offset
 {
-  if (pre != 0) {
-    if (swp == 0) { // Non swap ~ page online
+  if (pre != 0)
+  {
+    if (swp == 0)
+    { // Non swap ~ page online
       if (fpn == 0)
-        return -1;  // Invalid setting
+        return -1; // Invalid setting
 
       /* Valid setting with FPN */
       SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
@@ -82,9 +83,6 @@ int pte_set_fpn(uint32_t *pte, int fpn)
 
 /*
  * vmap_page_range - map a range of page at aligned address
- * hàm này ánh xạ một khoảng các trang ảo từ addr -> (pgnum * PAGING_PAGESZ)
- * vào bảng trang của tiến trình 
- * Thêm các stt trang (page numbers) vào fifo list
  */
 int vmap_page_range(struct pcb_t *caller,           // process call
                     int addr,                       // start address which is aligned to pagesz
@@ -92,75 +90,40 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-  // struct framephy_struct *fpit
-  // int pgit;
-  // int pgn = PAGING_PGN(addr);
+  // struct framephy_struct *fpit;
+  // TODO: 11/04/2025
+  struct framephy_struct *fpit = frames;
 
-  // ret_rg->rg_start = addr;
-  // ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ;
-  // ret_rg->rg_next = NULL;
-  // // ret_rg->vmaid = caller->mm->mmap->vm_id;
+  int pgit = 0;
+  int pgn = PAGING_PGN(addr);
 
-  // for (pgit = 0; pgit < pgnum; pgit++) {
-  //   int cur_addr = addr +  pgit * PAGING_PAGESZ;
-  //   int pgn = PAGING_PGN(cur_addr);
+  /* TODO: update the rg_end and rg_start of ret_rg
+  //ret_rg->rg_end =  ....
+  //ret_rg->rg_start = ...
+  //ret_rg->vmaid = ...
+  */
+  // TODO: 11/04/2025
+  ret_rg->rg_start = addr;
+  ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ - 1;
+  ret_rg->rg_next = NULL;
 
-  //   // nếu không có khung trống trong frames , lấy fpn của nó
-  //   if (frames !=  NULL)
-  //   {
-  //     pte_set_fpn(&caller->mm->pgd[pgn], frames->fpn);
-  //     frames = frames->fp_next;
-  //   }
-  //   else
-  //   {
-  //     printf("lỗi không đủ frames để ánh xạ tại địa chỉ %d \n", cur_addr);
-  //     return -1;
-  //   }
+  /* TODO map range of frame to address space
+   *      [addr to addr + pgnum*PAGING_PAGESZ
+   *      in page table caller->mm->pgd[]
+   */
+  // TODO: 11/04/2025
+  for (pgit = 0; pgit < pgnum && fpit != NULL; pgit++, fpit = fpit->fp_next)
+  {
+    int cur_pgn = pgn + pgit;
+    uint32_t *pte = &caller->mm->pgd[cur_pgn];
+    pte_set_fpn(pte, fpit->fpn);
 
-  //   // thêm stt trang vào fifo
-  //   enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
-  // }
-  // return 0;
-
-  struct framephy_struct *cur_frame = frames; // Con trỏ đến frame hiện tại
-  int pgn_start = PAGING_PGN(addr);          // Trang ảo bắt đầu
-  int pgn_end = pgn_start + pgnum;           // Trang ảo kết thúc
-
-    // //Cập nhật thông tin vùng ánh xạ trả về
-    // ret_rg->rg_start = addr;                    // Địa chỉ ảo bắt đầu
-    // ret_rg->rg_end = addr + pgnum * PAGING_PAGESZ; // Địa chỉ ảo kết thúc
-    // ret_rg->vmaid = caller->mm->mmap->vm_id;   // Gắn vùng địa chỉ ảo hiện tại
-
-    // Ánh xạ từng trang ảo vào frame vật lý
-  for (int pgit = 0; pgit < pgnum; pgit++) {
-    int pgn = pgn_start + pgit;            // Trang hiện tại
-    uint32_t *pte = &caller->mm->pgd[pgn]; // PTE của trang
-
-    // Kiểm tra xem frame có đủ để ánh xạ không
-    if (cur_frame == NULL) {
-        //printf("[VMAP_PAGE_RANGE] Error: Not enough frames for page %d.\n", pgn);
-        return -1; // Trả lỗi nếu không đủ frame
-    }
-
-    // Kiểm tra trang đã được ánh xạ trước đó chưa
-    if (PAGING_PAGE_PRESENT(*pte)) {
-        //printf("[VMAP_PAGE_RANGE] Warning: Page %d is already mapped to frame %d.\n", 
-                //pgn, PAGING_PTE_FPN(*pte));
-        continue; // Bỏ qua nếu trang đã được ánh xạ
-    }
-
-    // Ánh xạ frame vào PTE
-    pte_set_fpn(pte, cur_frame->fpn); // Cập nhật bảng trang
-    //printf("[VMAP_PAGE_RANGE] Page %d mapped to frame %d.\n", pgn, cur_frame->fpn);
-
-    // Thêm trang vào danh sách FIFO để theo dõi
-    enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
-
-    // Chuyển sang frame tiếp theo
-    cur_frame = cur_frame->fp_next;
+    /* Tracking for later page replacement activities (if needed)
+     * Enqueue new usage page */
+    enlist_pgn_node(&caller->mm->fifo_pgn, cur_pgn);
   }
 
-    return 0; // Trả về thành công
+  return 0;
 }
 
 /*
@@ -168,81 +131,86 @@ int vmap_page_range(struct pcb_t *caller,           // process call
  * @caller    : caller
  * @req_pgnum : request page num
  * @frm_lst   : frame list
- * Hàm lặp qua số trang cần cấp phát (pgnum), gọi MEMPHY_get_freefp để lấy
- * 1 khung trống -> tạo node của framephy_struct
  */
-
 int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
 {
-  // int pgit, fpn;
-  // *frm_lst = NULL;
+  int pgit, fpn;
+  struct framephy_struct *newfp_str = NULL;
 
-  // for (pgit = 0; pgit < req_pgnum; pgit++)
-  // {
-  //   // if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-  //   // {
-  //   //   struct framephy_struct *new_node = malloc(sizeof(struct framephy_struct));
-  //   //   if (new_node == NULL)
-  //   //   {
-  //   //     printf("lỗi allocate memory trong alloc_pages_range\n");
-  //   //     return -1;
-  //   //   }
-  //   //   new_node->fpn = fpn;
-  //   //   new_node->fp_next = *frm_lst;
-  //   //   *frm_lst = new_node;
-  //   // }
-  //   // else
-  //   // { 
-  //   //   // không đủ khung trống (OUT OF MEMORY - OOM)
-  //   //   printf("lỗi không đủ khung trống trong RAM\n");
-  //   //   return -3000;
-  //   // }
-  // }
+  /* TODO: allocate the page
+  //caller-> ...
+  //frm_lst-> ...
+  */
 
-  // return 0;
-
-  for (int pgit = 0; pgit < req_pgnum; pgit++) {
-    uint32_t *pte = &caller->mm->pgd[pgit];
-
-    // Kiểm tra nếu trang đã được ánh xạ
-    if (PAGING_PAGE_PRESENT(*pte)) {
-        //printf("[ALLOC_PAGES_RANGE] Page %d already mapped to frame %d.\n", pgit, PAGING_PTE_FPN(*pte));
-        continue;
+  for (pgit = 0; pgit < req_pgnum; pgit++)
+  {
+    /* TODO: allocate the page
+     */
+    // TODO: 11/04/2025
+    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
+    {
+      newfp_str = (struct framephy_struct *)malloc(sizeof(struct framephy_struct));
+      newfp_str->fpn = fpn;
+      newfp_str->owner = caller->mm;
+      if (!*frm_lst)
+        *frm_lst = newfp_str;
+      else
+      {
+        newfp_str->fp_next = *frm_lst;
+        *frm_lst = newfp_str;
+      }
+      newfp_str->fp_next = caller->mram->used_fp_list;
+      caller->mram->used_fp_list = newfp_str;
     }
-
-    int fpn;
-    // Lấy khung trống từ RAM
-    pthread_mutex_lock(&ram_lock);
-    if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
-        pthread_mutex_unlock(&ram_lock);
-
-        //printf("[ALLOC_PAGES_RANGE] Error: Out of free frames.\n");
+    // TODO: ERROR CODE of obtaining somes but not enough frames
+    else
+    {
+      int victim_fpn, victim_pgn, victim_pte;
+      int swpfpn = -1;
+      if (find_victim_page(caller->mm, &victim_pgn) < 0)
         return -1;
-    }
-    pthread_mutex_unlock(&ram_lock);
+      victim_pte = caller->mm->pgd[victim_pgn];
+      victim_fpn = PAGING_FPN(victim_pte);
+      newfp_str = (struct framephy_struct *)malloc(sizeof(struct framephy_struct));
+      newfp_str->fpn = victim_fpn;
+      newfp_str->owner = caller->mm;
+      if (!*frm_lst)
+        *frm_lst = newfp_str;
+      else
+      {
+        newfp_str->fp_next = *frm_lst;
+        *frm_lst = newfp_str;
+      }
 
-    // Cập nhật danh sách khung trang
-    struct framephy_struct *node = malloc(sizeof(struct framephy_struct));
-    if (node == NULL) {
-        printf("[ALLOC_PAGES_RANGE] Error: Failed to allocate memory for framephy_struct.\n");
-        return -1;
+      // TODO: 11/04/2025 Tiến hành swap
+      int i = 0;
+      if (MEMPHY_get_freefp(caller->active_mswp, &swpfpn) == 0)
+      {
+        __swap_cp_page(caller->mram, victim_fpn, caller->active_mswp, swpfpn);
+        struct memphy_struct *mswp = (struct memphy_struct *)caller->mswp;
+        for (i = 0; i < PAGING_MAX_MMSWP; i++)
+        {
+          if (mswp + i == caller->active_mswp)
+            break;
+        }
+      }
+      else
+      {
+        struct memphy_struct *mswp = (struct memphy_struct *)caller->mswp;
+        for (i = 0; i < PAGING_MAX_MMSWP; i++)
+        {
+          if (MEMPHY_get_freefp(mswp + i, &swpfpn) == 0)
+          {
+            __swap_cp_page(caller->mram, victim_fpn, mswp + i, swpfpn);
+            break;
+          }
+        }
+      }
+      if (swpfpn == -1)
+        return -3000;
+      pte_set_swap(&caller->mm->pgd[victim_pgn], i, swpfpn);
     }
-    node->fpn = fpn;
-    node->fp_next = *frm_lst;
-    *frm_lst = node;
-
-    // Cập nhật PTE
-    pte_set_fpn(pte, fpn);
-    if (!PAGING_PAGE_PRESENT(*pte)) {
-        printf("[ALLOC_PAGES_RANGE] Error: Failed to set frame number in PTE for page %d.\n", pgit);
-        // Thêm trang vào danh sách FIFO
-          //enlist_pgn_node(&caller->mm->fifo_pgn, pgit);
-        return -1;
-    }
-    enlist_pgn_node(&caller->mm->fifo_pgn, pgit);
-    //printf("[ALLOC_PAGES_RANGE] Page %d mapped to frame %d.\n", pgit, fpn);
   }
-
   return 0;
 }
 
@@ -254,13 +222,11 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
  * @mapstart  : start mapping point
  * @incpgnum  : number of mapped page
  * @ret_rg    : returned region
- * Hàm gọi alloc_pages_range để cấp phát số trang, sau đó gọi vmap_page_range
- * để ánh xạ trang vào bộ nhớ
  */
 int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int incpgnum, struct vm_rg_struct *ret_rg)
 {
   struct framephy_struct *frm_lst = NULL;
-  int ret_alloc; // lưu mã trả về từ alloc_pages_range
+  int ret_alloc;
 
   /*@bksysnet: author provides a feasible solution of getting frames
    *FATAL logic in here, wrong behaviour if we have not enough page
@@ -273,6 +239,8 @@ int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int inc
 
   if (ret_alloc < 0 && ret_alloc != -3000)
     return -1;
+
+  /* Out of memory */
   if (ret_alloc == -3000)
   {
 #ifdef MMDBG
@@ -281,6 +249,8 @@ int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int inc
     return -1;
   }
 
+  /* it leaves the case of memory is enough but half in ram, half in swap
+   * do the swaping all to swapper to get the all in ram */
   vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg);
 
   return 0;
@@ -291,7 +261,6 @@ int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int inc
  * @srcfpn : source physical page number (FPN)
  * @mpdst  : destination memphy
  * @dstfpn : destination physical page number (FPN)
- * sao chép ndung trang từ khung nguồn sang đích
  **/
 int __swap_cp_page(struct memphy_struct *mpsrc, int srcfpn,
                    struct memphy_struct *mpdst, int dstfpn)
@@ -322,24 +291,29 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
 
   mm->pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
 
+  /* By default the owner comes with at least one vma */
   vma0->vm_id = 0;
   vma0->vm_start = 0;
   vma0->vm_end = vma0->vm_start;
   vma0->sbrk = vma0->vm_start;
-
   struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
   enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
 
+  /* TODO update VMA0 next */
+  // vma0->next = ...
+  // TODO: 11/04/2025
   vma0->vm_next = NULL;
+  /* Point vma owner backward */
   vma0->vm_mm = mm;
 
+  /* TODO: update mmap */
+  // mm->mmap = ...
+  // TODO: 11/04/2025
   mm->mmap = vma0;
-  mm->fifo_pgn = NULL;
 
   return 0;
 }
 
-// khởi tạo 1 memo region với biên re_start. r_end
 struct vm_rg_struct *init_vm_rg(int rg_start, int rg_end)
 {
   struct vm_rg_struct *rgnode = malloc(sizeof(struct vm_rg_struct));
@@ -350,7 +324,7 @@ struct vm_rg_struct *init_vm_rg(int rg_start, int rg_end)
 
   return rgnode;
 }
-//  Thêm một node của vm_rg vào danh sách
+
 int enlist_vm_rg_node(struct vm_rg_struct **rglist, struct vm_rg_struct *rgnode)
 {
   rgnode->rg_next = *rglist;
@@ -370,13 +344,16 @@ int enlist_pgn_node(struct pgn_t **plist, int pgn)
   return 0;
 }
 
-// Thêm một node chứa số trang (pgn) vào danh sách FIFO
 int print_list_fp(struct framephy_struct *ifp)
 {
   struct framephy_struct *fp = ifp;
 
   printf("print_list_fp: ");
-  if (fp == NULL) { printf("NULL list\n"); return -1;}
+  if (fp == NULL)
+  {
+    printf("NULL list\n");
+    return -1;
+  }
   printf("\n");
   while (fp != NULL)
   {
@@ -392,7 +369,11 @@ int print_list_rg(struct vm_rg_struct *irg)
   struct vm_rg_struct *rg = irg;
 
   printf("print_list_rg: ");
-  if (rg == NULL) { printf("NULL list\n"); return -1; }
+  if (rg == NULL)
+  {
+    printf("NULL list\n");
+    return -1;
+  }
   printf("\n");
   while (rg != NULL)
   {
@@ -408,7 +389,11 @@ int print_list_vma(struct vm_area_struct *ivma)
   struct vm_area_struct *vma = ivma;
 
   printf("print_list_vma: ");
-  if (vma == NULL) { printf("NULL list\n"); return -1; }
+  if (vma == NULL)
+  {
+    printf("NULL list\n");
+    return -1;
+  }
   printf("\n");
   while (vma != NULL)
   {
@@ -422,7 +407,11 @@ int print_list_vma(struct vm_area_struct *ivma)
 int print_list_pgn(struct pgn_t *ip)
 {
   printf("print_list_pgn: ");
-  if (ip == NULL) { printf("NULL list\n"); return -1; }
+  if (ip == NULL)
+  {
+    printf("NULL list\n");
+    return -1;
+  }
   printf("\n");
   while (ip != NULL)
   {
@@ -448,7 +437,11 @@ int print_pgtbl(struct pcb_t *caller, uint32_t start, uint32_t end)
   pgn_end = PAGING_PGN(end);
 
   printf("print_pgtbl: %d - %d", start, end);
-  if (caller == NULL) { printf("NULL caller\n"); return -1;}
+  if (caller == NULL)
+  {
+    printf("NULL caller\n");
+    return -1;
+  }
   printf("\n");
 
   for (pgit = pgn_start; pgit < pgn_end; pgit++)
