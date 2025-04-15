@@ -8,10 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-
-static pthread_mutex_t ram_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t swap_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  *  MEMPHY_mv_csr - move MEMPHY cursor
@@ -43,6 +39,8 @@ int MEMPHY_seq_read(struct memphy_struct *mp, int addr, BYTE *value)
 {
    if (mp == NULL)
       return -1;
+   if (addr < 0 || addr >= mp->maxsz)
+      return -1;
 
    if (!mp->rdmflg)
       return -1; /* Not compatible mode for sequential read */
@@ -63,7 +61,8 @@ int MEMPHY_read(struct memphy_struct *mp, int addr, BYTE *value)
 {
    if (mp == NULL)
       return -1;
-
+   if (addr < 0 || addr >= mp->maxsz)
+      return -1;
    if (mp->rdmflg)
       *value = mp->storage[addr];
    else /* Sequential access device */
@@ -82,6 +81,8 @@ int MEMPHY_seq_write(struct memphy_struct *mp, int addr, BYTE value)
 {
 
    if (mp == NULL)
+      return -1;
+   if (addr < 0 || addr >= mp->maxsz)
       return -1;
 
    if (!mp->rdmflg)
@@ -103,7 +104,8 @@ int MEMPHY_write(struct memphy_struct *mp, int addr, BYTE data)
 {
    if (mp == NULL)
       return -1;
-
+   if (addr < 0 || addr >= mp->maxsz)
+      return -1;
    if (mp->rdmflg)
       mp->storage[addr] = data;
    else /* Sequential access device */
@@ -160,64 +162,19 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, int *retfpn)
    free(fp);
 
    return 0;
-   // if (mp == NULL || retfpn == NULL) {
-   //      printf("[MEMPHY_GET_FREEFP] Error: Invalid memory structure or output pointer.\n");
-   //      return -1;
-   //  }
-   // pthread_mutex_lock(&ram_lock); // Đảm bảo đồng bộ hóa
-
-   // struct framephy_struct *fp = mp->free_fp_list;
-
-   // if (fp == NULL){
-   //     printf("[MEMPHY_GET_FREEFP] Error: No free frame available.\n");
-   //     pthread_mutex_unlock(&ram_lock);
-   //   return -1;
-   // }
-   // *retfpn = fp->fpn;
-   // mp->free_fp_list = fp->fp_next;
-
-   // /* MEMPHY is iteratively used up until its exhausted
-   //  * No garbage collector acting then it not been released
-   //  */
-   // free(fp);
-   // pthread_mutex_unlock(&ram_lock);
-   // return 0;
 }
 
 int MEMPHY_dump(struct memphy_struct *mp)
 {
-   // if (mp == NULL || mp->storage == NULL)
-   // {
-   //    printf("Error : invalid memo structure.\n");
-   //    return -1;
-   // }
-   // printf("MEMPHY dump (max size %d bytes):\n", mp->maxsz);
-   // for (int i = 0; i < mp->maxsz; i++) {
-   //     printf("%02x ", mp->storage[i]);
-   //     if ((i + 1) % 16 == 0)
-   //         printf("\n");
-   // }
-
-   // return 0;
-
-   if(mp == NULL || mp->storage == NULL) {
-      printf("Error: Invalid memory or storage pointer\n");
-      return -1; // check if memory valid?
+  /*TODO dump memphy contnt mp->storage
+   *     for tracing the memory content
+   */
+   //TODO: 11/4/2025
+   for(int i = 0; i < mp->maxsz / 4; ++i)
+   {
+      if(mp->storage[i * 4] + mp->storage[i * 4 + 1] + mp->storage[i * 4 + 2] + mp->storage[i * 4 + 3] != 0)
+      printf("%08x: %02x%02x%02x%02x\n", i * 4, mp->storage[i * 4], mp->storage[i * 4 + 1], mp->storage[i * 4 + 2], mp->storage[i * 4 + 3]);
    }
-   printf("__RAM CONTENT__\n");
-
-   unsigned long address = 0; // use unsigned long to avoid errors when traversing memory address
-
-   // scan memory from 0 to mp-maxsz - 1
-   for(address = 0; address < mp->maxsz; address++) {
-      // check if value at address not equal 0
-      if(mp->storage[address] != 0) {
-         printf("0x%08lx: %08x\n", address, mp->storage[address]);
-      }
-   }
-   printf("__END CONTENT__\n");
-
-   printf("\n");
    return 0;
 }
 
