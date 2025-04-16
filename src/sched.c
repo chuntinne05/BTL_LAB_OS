@@ -53,12 +53,18 @@ struct pcb_t * get_mlq_proc(void) {
 	 * */
 	pthread_mutex_lock(&queue_lock);
 	unsigned long prio = 0;
-	while (prio < MAX_PRIO) {
-		if (!empty(&mlq_ready_queue[prio])) {
+	unsigned long slot_count = 0;
+	for(int i = 0; i < MAX_PRIO; i++) { // Chạy qua tất cả các hàng đợi
+		if(!empty(&mlq_ready_queue[i]) && slot_count < slot[prio]) {
+			// Hàng đợi tại prio còn slot trống và không rỗng
 			proc = dequeue(&mlq_ready_queue[prio]);
+			slot_count++;
 			break;
 		}
-		prio++;
+		else { // Nếu hàng đợi tại prio rỗng hoặc không còn slot trống
+			prio = (prio + 1) % MAX_PRIO; // Tăng prio lên 1
+			slot_count = 0; // Đặt lại slot_count về 0
+		}
 	}
 	pthread_mutex_unlock(&queue_lock);
 	return proc;	
